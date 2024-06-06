@@ -1,0 +1,5 @@
+CREATE TABLE users (
+    id BIGINT PRIMARY KEY,
+    business_id VARCHAR UNIQUE NOT NULL,
+    openai JSONB NOT NULL DEFAULT '{}'::JSONB
+);

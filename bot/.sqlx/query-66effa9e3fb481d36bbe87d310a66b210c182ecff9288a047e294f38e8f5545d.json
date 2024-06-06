@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO users (id, business_id, openai)\n        VALUES ($1, $2, $3)\n        ON CONFLICT (id)\n        DO UPDATE SET\n            business_id = EXCLUDED.business_id\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Varchar",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "66effa9e3fb481d36bbe87d310a66b210c182ecff9288a047e294f38e8f5545d"
+}
