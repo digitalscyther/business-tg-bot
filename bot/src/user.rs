@@ -94,7 +94,10 @@ impl OpenaiConfig {
 
     pub async fn set_api_key(&mut self, api_key: String) -> Result<(), &'static str> {
         match Self::validate_api_key(&api_key).await {
-            Ok(true) => Ok(()),
+            Ok(true) => {
+                self.api_key = Some(api_key);
+                Ok(())
+            },
             Ok(false) => Err("Invalid API key"),
             Err(e) => {
                 log::error!("Failed check API key:\n{e:?}");
