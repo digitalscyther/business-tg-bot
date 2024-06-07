@@ -123,11 +123,11 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
         ["/prompt", ..] => {
             let new_prompt = command.replacen("/prompt ", "", 1);
             match new_prompt.len() > MAX_PROMPT_SIZE {
-                true => {
+                true => "Max prompt size is 4.000 symbols".to_string(),
+                false => {
                     config.set_prompt(new_prompt)?;   // TODO set prompt to None
                     "Option updated".to_string()
                 },
-                false => "Max prompt size is 4.000 symbols".to_string()
             }
         }
         ["/max_message_length", new_length] => {
