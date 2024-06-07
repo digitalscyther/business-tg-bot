@@ -1,4 +1,3 @@
-//! The example shows how to use long polling
 mod dialogue;
 mod user;
 mod db;
@@ -14,6 +13,8 @@ use tgbot::{
 };
 use tgbot::types::{Chat, UpdateType};
 use crate::user::{Openai, User};
+
+const MAX_PROMPT_SIZE: usize = 4_000;
 
 struct Handler {
     client: Client,
@@ -38,15 +39,27 @@ impl UpdateHandler for Handler {
             UpdateType::BusinessMessage(message) => {
                 let business_id = message.business_connection_id.clone().unwrap();
                 match db::load_user_from_business_id(&pool, &business_id).await {
-                    Ok(_user) => Some(
-                        SendMessage::new(
-                            message.chat.get_id(),
-                            match message.get_text() {
-                                Some(text) => format!("You wrote: \"{}\"", text.data),
-                                None => "Only text".to_string()
-                            },
-                        ).with_business_connection_id(business_id)
-                    ),
+                    Ok(user) => {
+                        if let Some(uid) = message.sender.get_user_id() {
+                            let uid: i64 = uid.into();
+                            if uid == user.get_id() {
+                                return;
+                            }
+                        }
+                        Some(
+                            SendMessage::new(
+                                message.chat.get_id(),
+                                match message.get_text() {
+                                    Some(text) => match get_answer(&pool, &user, text.clone().data).await {
+                                        Ok(Some(message)) => message,
+                                        Ok(None) => {return;},
+                                        Err(e) => e
+                                    },
+                                    None => "Only text".to_string()
+                                },
+                            ).with_business_connection_id(business_id)
+                        )
+                    }
                     Err(_) => {
                         log::error!("Not found user with business_id={}", business_id);
                         None
@@ -88,7 +101,7 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
 
     let response = match parts.as_slice() {
         ["/api_key", new_api_key] => {
-            config.set_api_key(new_api_key.to_string())?;
+            config.set_api_key(new_api_key.to_string()).await?;
             "Option updated".to_string()
         }
         ["/api_key"] => {
@@ -106,8 +119,13 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
         }
         ["/prompt", ..] => {
             let new_prompt = command.replacen("/prompt ", "", 1);
-            config.set_prompt(new_prompt)?;
-            "Option updated".to_string()
+            match new_prompt.len() > MAX_PROMPT_SIZE {
+                true => {
+                    config.set_prompt(new_prompt)?;   // TODO set prompt to None
+                    "Option updated".to_string()
+                },
+                false => "Max prompt size is 4.000 symbols".to_string()
+            }
         }
         ["/max_message_length", new_length] => {
             let length: i32 = new_length.parse().map_err(|_| "Invalid length")?;
@@ -124,6 +142,14 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
         }
         ["/max_total_tokens_spent"] => {
             format!("Current max total tokens spent: {}", config.get_max_total_tokens_spent())
+        }
+        ["/max_tokens", new_tokens] => {
+            let tokens: u16 = new_tokens.parse().map_err(|_| "Invalid token amount")?;
+            config.set_max_tokens(tokens);
+            "Option updated".to_string()
+        }
+        ["/max_tokens"] => {
+            format!("Current max tokens: {}", config.get_max_total_tokens_spent())
         }
         ["/help"] => read_to_string("./files/help_text.txt").unwrap_or_else(|e| {
             log::error!("Failed get help command text:\n{e:?}");
@@ -146,6 +172,30 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
     }
 
     Ok(response.to_string())
+}
+
+async fn get_answer(pool: &Pool<Postgres>, user: &User, message: String) -> Result<Option<String>, String> {
+    if user.get_openai_spent_tokens() > user.get_config().get_max_total_tokens_spent() {
+        return Ok(None);    // TODO send notification to owner
+    }
+
+    if message.len() > user.get_config().get_max_message_length() as usize {
+        return Err("too long message".to_string());
+    }
+
+    let config = user.get_config();
+    match dialogue::get_response(&config, message).await {
+        Ok(response) => {
+            if let Err(e) = db::add_spends(pool, user.get_id(), response.tokens_spent as i32).await {
+                log::error!("Failed update tokens spent:{e:?}");
+            }
+            return Ok(Some(response.message))
+        }
+        Err(err) => {
+            log::error!("Failed get at response:\n{err:?}");
+            Err("I don't know what to answer".to_string())
+        }
+    }
 }
 
 #[tokio::main]

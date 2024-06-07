@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE users\n        SET openai = $1\n        WHERE id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2ae42cf43a17c8fecb46637b688373d656689032320bf7babf87b28b4eb608ac"
+}

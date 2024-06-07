@@ -1,20 +1,12 @@
-/help - Display this help message with all available commands.
+/help - Show this help message with all commands.
 
-/api_key <new_api_key> - Set a new API key. Replace `<new_api_key>` with your actual API key.
-/api_key - Display the current API key.
+/api_key <new_api_key> - Set a new API key.
+/model <new_model> - Set a new model.
+/prompt <new_prompt> - Set a new prompt.
+/max_message_length <new_length> - Set a new max user message length.
+/max_tokens <new_tokens> - Set a new max tokens OpenAI response.
+/max_total_tokens_spent <new_tokens> - Set a new max total tokens.
 
-/model <new_model> - Set a new model. Replace `<new_model>` with your desired model.
-/model - Display the current model.
+Replace placeholders (e.g., <new_api_key>, <new_model>) with actual values.
 
-/prompt <new_prompt> - Set a new prompt. Replace `<new_prompt>` with your desired prompt text.
-/prompt - Display the current prompt.
-
-/max_message_length <new_length> - Set a new maximum message length. Replace `<new_length>` with the desired maximum length.
-/max_message_length - Display the current maximum message length.
-
-/max_total_tokens_spent <new_tokens> - Set a new maximum total tokens spent. Replace `<new_tokens>` with the desired maximum token amount.
-/max_total_tokens_spent - Display the current maximum total tokens spent.
-
-For any command that requires input, make sure to replace the placeholder text (e.g., `<new_api_key>`, `<new_model>`, etc.) with your actual values.
-
-If you enter an unknown command, you will receive an "Unknown command" message.
+Use the command without arguments to display the current setting (e.g., /api_key).

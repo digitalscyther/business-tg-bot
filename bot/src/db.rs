@@ -112,3 +112,24 @@ pub async fn update_openai_by_id(pool: &Pool<Postgres>, id: i64, openai: Openai)
 
     Ok(())
 }
+
+
+pub async fn add_spends(pool: &Pool<Postgres>, id: i64, tokens_spent: i32) -> Result<(), Error> {
+    sqlx::query!(
+        r#"
+        UPDATE users
+        SET openai = jsonb_set(
+            openai::jsonb,
+            '{spent_tokens}',
+            ((openai->>'spent_tokens')::int + $1)::text::jsonb
+        )
+        WHERE id = $2
+        "#,
+        tokens_spent,
+        id,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}

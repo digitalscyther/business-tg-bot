@@ -2,6 +2,7 @@ use std::string::ToString;
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use crate::{dialogue};
 
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -32,6 +33,8 @@ pub struct OpenaiConfig {
     max_message_length: i32,
     #[derivative(Default(value = "1_000_000"))]
     max_total_tokens_spent: i64,
+    #[derivative(Default(value = "300"))]
+    max_tokens: u16,
 }
 
 impl User {
@@ -39,11 +42,11 @@ impl User {
         Self { id, business_id, openai }
     }
 
-    pub fn get_config(&mut self) -> OpenaiConfig {
+    pub fn get_config(&self) -> OpenaiConfig {
         self.openai.config.clone()
     }
 
-    pub fn get_openai_spent_tokens(&mut self) -> i64 {
+    pub fn get_openai_spent_tokens(&self) -> i64 {
         self.openai.spent_tokens
     }
 
@@ -73,8 +76,8 @@ impl OpenaiConfig {
         &self.model
     }
 
-    pub fn get_prompt(&self) -> &str {
-        self.prompt.as_deref().unwrap_or("---")
+    pub fn get_prompt(&self) -> Option<&str> {
+        self.prompt.as_deref()
     }
 
     pub fn get_max_message_length(&self) -> i32 {
@@ -85,13 +88,18 @@ impl OpenaiConfig {
         self.max_total_tokens_spent
     }
 
-    // Setters with validation
-    pub fn set_api_key(&mut self, api_key: String) -> Result<(), &'static str> {
-        if Self::validate_api_key(&api_key) {
-            self.api_key = Some(api_key);
-            Ok(())
-        } else {
-            Err("Invalid API key")
+    pub fn get_max_tokens(&self) -> u16 {
+        self.max_tokens
+    }
+
+    pub async fn set_api_key(&mut self, api_key: String) -> Result<(), &'static str> {
+        match Self::validate_api_key(&api_key).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("Invalid API key"),
+            Err(e) => {
+                log::error!("Failed check API key:\n{e:?}");
+                Err("Failed check API key")
+            },
         }
     }
 
@@ -127,10 +135,12 @@ impl OpenaiConfig {
         self.max_total_tokens_spent = tokens;
     }
 
-    // Helper function for API key validation
-    fn validate_api_key(api_key: &str) -> bool {
-        // Implement your API key validation logic here
-        true
+    pub fn set_max_tokens(&mut self, tokens: u16) {
+        self.max_tokens = tokens;
+    }
+
+    async fn validate_api_key(api_key: &str) -> Result<bool, String> {
+        dialogue::is_api_key_valid(api_key).await
     }
 }
 
