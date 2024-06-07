@@ -80,7 +80,10 @@ impl UpdateHandler for Handler {
                             None => "Only text".to_string()
                         }).await.unwrap_or_else(|e| e.to_string()),
                     )),
-                    Err(_) => Some(SendMessage::new(chat_id, "only for business\ncontact @ku113p"))
+                    Err(_) => {
+                        let contact = env::var("CONTACT").unwrap_or("@DigitalScyther".to_string());
+                        Some(SendMessage::new(chat_id, format!("only for business\ncontact {contact}")))
+                    }
                 }
             }
             _ => {
