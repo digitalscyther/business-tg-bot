@@ -108,7 +108,7 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
             "Option updated".to_string()
         }
         ["/api_key"] => {
-            format!("Current API key: {:?}", config.get_api_key())
+            format!("Current API key: {:?}", config.get_api_key().unwrap_or("---".to_string()))
         }
         ["/model", new_model] => {
             config.set_model(new_model.to_string())?;
@@ -118,7 +118,7 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
             format!("Current model: {:?}", config.get_model())
         }
         ["/prompt"] => {
-            format!("Current prompt: {:?}", config.get_prompt())
+            format!("Current prompt: {:?}", config.get_prompt().unwrap_or("---"))
         }
         ["/prompt", ..] => {
             let new_prompt = command.replacen("/prompt ", "", 1);

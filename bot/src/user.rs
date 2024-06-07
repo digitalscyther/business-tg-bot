@@ -68,8 +68,11 @@ impl From<Openai> for Value {
 }
 
 impl OpenaiConfig {
-    pub fn get_api_key(&self) -> &str {
-        self.api_key.as_deref().unwrap_or("---")
+    pub fn get_api_key(&self) -> Option<String> {
+        Some(match self.api_key.clone()? {
+            key if key.len() > 5 => format!("...{}", &key[key.len() - 5..]),
+            key => key,
+        })
     }
 
     pub fn get_model(&self) -> &str {
@@ -97,12 +100,12 @@ impl OpenaiConfig {
             Ok(true) => {
                 self.api_key = Some(api_key);
                 Ok(())
-            },
+            }
             Ok(false) => Err("Invalid API key"),
             Err(e) => {
                 log::error!("Failed check API key:\n{e:?}");
                 Err("Failed check API key")
-            },
+            }
         }
     }
 
@@ -111,7 +114,7 @@ impl OpenaiConfig {
             "gpt-3.5-turbo" | "gpt-4-turbo" | "gpt-4o" => {
                 self.model = model;
                 Ok(())
-            },
+            }
             _ => Err("Invalid model. Allowed values are: gpt-3.5-turbo, gpt-4-turbo, gpt-4o"),
         }
     }
