@@ -152,7 +152,7 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
             "Option updated".to_string()
         }
         ["/max_tokens"] => {
-            format!("Current max tokens: {}", config.get_max_total_tokens_spent())
+            format!("Current max tokens: {}", config.get_max_tokens())
         }
         ["/help"] => read_to_string("./files/help_text.txt").unwrap_or_else(|e| {
             log::error!("Failed get help command text:\n{e:?}");
