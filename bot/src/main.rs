@@ -202,6 +202,8 @@ async fn get_answer(pool: &Pool<Postgres>, user: &User, message: String) -> Resu
 async fn main() {
     pretty_env_logger::init();
 
+    db::migrate(&db::create_pool().await).await.expect("failed migrations");
+
     let token = env::var("TG_TOKEN").expect("TG_TOKEN is not set");
     let client = Client::new(token).expect("Failed to create API");
     LongPoll::new(client.clone(), Handler { client }).run().await;

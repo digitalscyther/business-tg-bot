@@ -1,0 +1,28 @@
+services:
+  bot:
+    build:
+      context: bot
+      target: final
+    env_file:
+      - bot/.env
+    networks:
+      - db_network
+
+  postgres:
+    image: postgres
+    restart: always
+    command: postgres -c 'max_connections=2000'
+    volumes:
+      - ./data/pg_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=example
+      - POSTGRES_USER=businessbot
+      - POSTGRES_DB=businessbot
+#    ports:
+#      - 5437:5432
+    networks:
+      - db_network
+
+networks:
+  db_network:
+    driver: bridge

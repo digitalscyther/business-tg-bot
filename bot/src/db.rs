@@ -1,6 +1,7 @@
 use std::env;
 use serde_json::Value;
 use sqlx::{Error, Pool, Postgres};
+use sqlx::migrate::MigrateError;
 use sqlx::postgres::PgPoolOptions;
 use crate::user::{User, Openai};
 
@@ -132,4 +133,10 @@ pub async fn add_spends(pool: &Pool<Postgres>, id: i64, tokens_spent: i32) -> Re
     .await?;
 
     Ok(())
+}
+
+pub async fn migrate(pool: &Pool<Postgres>) -> Result<(), MigrateError> {
+    sqlx::migrate!("./migrations")
+        .run(pool)
+        .await
 }

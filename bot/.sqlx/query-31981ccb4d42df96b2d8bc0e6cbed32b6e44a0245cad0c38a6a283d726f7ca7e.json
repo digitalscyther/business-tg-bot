@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE users\n        SET openai = jsonb_set(\n            openai::jsonb,\n            '{spent_tokens}',\n            ((openai->>'spent_tokens')::int + $1)::text::jsonb\n        )\n        WHERE id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "31981ccb4d42df96b2d8bc0e6cbed32b6e44a0245cad0c38a6a283d726f7ca7e"
+}
