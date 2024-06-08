@@ -12,7 +12,7 @@ use tgbot::{
     handler::{LongPoll, UpdateHandler},
     types::{SendMessage, Update},
 };
-use tgbot::types::{Chat, UpdateType};
+use tgbot::types::{Chat, ChatAction, SendChatAction, UpdateType};
 use crate::user::{Openai, User};
 
 const MAX_PROMPT_SIZE: usize = 4_000;
@@ -52,7 +52,19 @@ impl UpdateHandler for Handler {
                             SendMessage::new(
                                 message.chat.get_id(),
                                 match message.get_text() {
-                                    Some(text) => match get_answer(&self.pool, &user, &sender_id.unwrap().to_string(), &text.clone().data).await {
+                                    Some(text) => match get_answer(
+                                        &self.pool, &user, &sender_id.unwrap().to_string(), &text.clone().data,
+                                        || async {
+                                            let _ = self.client.execute(
+                                                SendChatAction::new(
+                                                    message.chat.get_id(),
+                                                    ChatAction::Typing,
+                                                ).with_business_connection_id(
+                                                    &business_id
+                                                )
+                                            ).await;
+                                        }
+                                    ).await {
                                         Ok(Some(message)) => message,
                                         Ok(None) => { return; }
                                         Err(e) => e
@@ -195,7 +207,17 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
     Ok(response.to_string())
 }
 
-async fn get_answer(pool: &Pool<Postgres>, user: &User, sender_id: &str, message: &str) -> Result<Option<String>, String> {
+async fn get_answer<F, Fut>(
+    pool: &Pool<Postgres>,
+    user: &User,
+    sender_id: &str,
+    message: &str,
+    call_typing: F
+) -> Result<Option<String>, String>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
     if user.get_openai_spent_tokens() > user.get_config().get_max_total_tokens_spent() {
         return Ok(None);    // TODO send notification to owner
     }
@@ -210,6 +232,7 @@ async fn get_answer(pool: &Pool<Postgres>, user: &User, sender_id: &str, message
         sender_id,
         message,
         |messages| async {
+            call_typing().await;
             match dialogue::get_response(&config, messages).await {
                 Ok(response) => {
                     if let Err(e) = db::add_spends(pool, user.get_id(), response.tokens_spent as i32).await {
