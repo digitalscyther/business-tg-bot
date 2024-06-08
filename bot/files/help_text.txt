@@ -6,6 +6,8 @@
 /max_message_length <new_length> - Set a new max user message length.
 /max_tokens <new_tokens> - Set a new max tokens OpenAI response.
 /max_total_tokens_spent <new_tokens> - Set a new max total tokens.
+/history_timeout <new_timeout> - Set a new conversation cache timeout.
+/history_length <new_length> - Set a new conversation cache max length.
 
 Replace placeholders (e.g., <new_api_key>, <new_model>) with actual values.
 

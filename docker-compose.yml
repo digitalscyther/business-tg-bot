@@ -7,6 +7,7 @@ services:
       - bot/.env
     networks:
       - db_network
+      - redis_network
 
   postgres:
     image: postgres
@@ -23,6 +24,20 @@ services:
     networks:
       - db_network
 
+  redis:
+    image: redis:latest
+    restart: always
+    environment:
+      - REDIS_PASSWORD=password
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - redis_network
+    ports:
+      - 6381:6379
+
 networks:
   db_network:
+    driver: bridge
+  redis_network:
     driver: bridge

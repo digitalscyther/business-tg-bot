@@ -1,6 +1,7 @@
 mod dialogue;
 mod user;
 mod db;
+mod conversation;
 
 use std::env;
 use std::fs::read_to_string;
@@ -18,41 +19,42 @@ const MAX_PROMPT_SIZE: usize = 4_000;
 
 struct Handler {
     client: Client,
+    pool: Pool<Postgres>,
 }
 
 impl UpdateHandler for Handler {
     async fn handle(&self, update: Update) {
-        let pool = db::create_pool().await;
         let method = match update.update_type {
             UpdateType::BusinessConnection(connection) => {
                 Some(SendMessage::new(connection.user_chat_id, match connection.is_enabled {
                     true => {
-                        db::insert_or_update_user(&pool, connection.user_chat_id, &connection.id).await.unwrap();
+                        db::insert_or_update_user(&self.pool, connection.user_chat_id, &connection.id).await.unwrap();
                         "created\nnow /help for info"
                     }
                     false => {
-                        db::delete_user_by_id(&pool, connection.user_chat_id).await.unwrap();
+                        db::delete_user_by_id(&self.pool, connection.user_chat_id).await.unwrap();
                         "deleted"
                     }
                 }))
             }
             UpdateType::BusinessMessage(message) => {
                 let business_id = message.business_connection_id.clone().unwrap();
-                match db::load_user_from_business_id(&pool, &business_id).await {
+                match db::load_user_from_business_id(&self.pool, &business_id).await {
                     Ok(user) => {
-                        if let Some(uid) = message.sender.get_user_id() {
-                            let uid: i64 = uid.into();
-                            if uid == user.get_id() {
+                        let sender_id = message.sender.get_user_id();
+                        if let Some(sender_id) = sender_id {
+                            let sender_id: i64 = sender_id.into();
+                            if sender_id == user.get_id() {
                                 return;
                             }
-                        }
+                        } else { return; }
                         Some(
                             SendMessage::new(
                                 message.chat.get_id(),
                                 match message.get_text() {
-                                    Some(text) => match get_answer(&pool, &user, text.clone().data).await {
+                                    Some(text) => match get_answer(&self.pool, &user, &sender_id.unwrap().to_string(), &text.clone().data).await {
                                         Ok(Some(message)) => message,
-                                        Ok(None) => {return;},
+                                        Ok(None) => { return; }
                                         Err(e) => e
                                     },
                                     None => "Only text".to_string()
@@ -71,9 +73,9 @@ impl UpdateHandler for Handler {
                     Chat::Private(chat) => chat.id,
                     _ => return,
                 };
-                match db::load_user_from_chat_id(&pool, chat_id.into()).await {
+                match db::load_user_from_chat_id(&self.pool, chat_id.into()).await {
                     Ok(mut user) => Some(SendMessage::new(chat_id, setup(
-                        &pool,
+                        &self.pool,
                         &mut user,
                         match message.get_text() {
                             Some(text) => text.clone().data,
@@ -110,6 +112,22 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
         ["/api_key"] => {
             format!("Current API key: {:?}", config.get_api_key().unwrap_or("---".to_string()))
         }
+        ["/history_timeout", new_cache_duration] => {
+            let cache_duration: i64 = new_cache_duration.parse().map_err(|_| "Invalid history_timeout")?;
+            config.set_cache_duration(cache_duration)?;
+            "Option updated".to_string()
+        }
+        ["/history_timeout"] => {
+            format!("Current history timeout: {:?} seconds", config.get_cache_duration())
+        }
+        ["/history_length", new_char_limit] => {
+            let char_limit: usize = new_char_limit.parse().map_err(|_| "Invalid history_length")?;
+            config.set_char_limit(char_limit)?;
+            "Option updated".to_string()
+        }
+        ["/history_length"] => {
+            format!("Current history length: {:?} symbols", config.get_char_limit())
+        }
         ["/model", new_model] => {
             config.set_model(new_model.to_string())?;
             "Option updated".to_string()
@@ -127,7 +145,7 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
                 false => {
                     config.set_prompt(new_prompt)?;   // TODO set prompt to None
                     "Option updated".to_string()
-                },
+                }
             }
         }
         ["/max_message_length", new_length] => {
@@ -177,7 +195,7 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
     Ok(response.to_string())
 }
 
-async fn get_answer(pool: &Pool<Postgres>, user: &User, message: String) -> Result<Option<String>, String> {
+async fn get_answer(pool: &Pool<Postgres>, user: &User, sender_id: &str, message: &str) -> Result<Option<String>, String> {
     if user.get_openai_spent_tokens() > user.get_config().get_max_total_tokens_spent() {
         return Ok(None);    // TODO send notification to owner
     }
@@ -187,27 +205,37 @@ async fn get_answer(pool: &Pool<Postgres>, user: &User, message: String) -> Resu
     }
 
     let config = user.get_config();
-    match dialogue::get_response(&config, message).await {
-        Ok(response) => {
-            if let Err(e) = db::add_spends(pool, user.get_id(), response.tokens_spent as i32).await {
-                log::error!("Failed update tokens spent:{e:?}");
+
+    Ok(config.get_manager().await.process_message(
+        sender_id,
+        message,
+        |messages| async {
+            match dialogue::get_response(&config, messages).await {
+                Ok(response) => {
+                    if let Err(e) = db::add_spends(pool, user.get_id(), response.tokens_spent as i32).await {
+                        log::error!("Failed update tokens spent:{e:?}");
+                    }
+                    return Ok(Some(response.message));
+                }
+                Err(err) => {
+                    log::error!("Failed get at response:\n{err:?}");
+                    Err("I don't know what to answer".to_string())
+                }
             }
-            return Ok(Some(response.message))
-        }
-        Err(err) => {
-            log::error!("Failed get at response:\n{err:?}");
-            Err("I don't know what to answer".to_string())
-        }
-    }
+        },
+    ).await.unwrap())
 }
 
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
 
-    db::migrate(&db::create_pool().await).await.expect("failed migrations");
+    let pool = db::create_pool().await;
+    db::migrate(&pool).await.expect("failed migrations");
 
     let token = env::var("TG_TOKEN").expect("TG_TOKEN is not set");
     let client = Client::new(token).expect("Failed to create API");
-    LongPoll::new(client.clone(), Handler { client }).run().await;
+
+    log::info!("Bot starting...");
+    LongPoll::new(client.clone(), Handler { client, pool }).run().await;
 }

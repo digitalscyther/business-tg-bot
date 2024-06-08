@@ -3,6 +3,10 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::{dialogue};
+use crate::conversation::{ConversationManager, DEFAULT_CACHE_DURATION, DEFAULT_CHAR_LIMIT};
+
+
+const DEFAULT_MODEL: &str = "gpt-3.5-turbo";
 
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -17,8 +21,6 @@ pub struct Openai {
     config: OpenaiConfig,
     spent_tokens: i64,
 }
-
-const DEFAULT_MODEL: &str = "gpt-3.5-turbo";
 
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Default)]
@@ -35,11 +37,20 @@ pub struct OpenaiConfig {
     max_total_tokens_spent: i64,
     #[derivative(Default(value = "300"))]
     max_tokens: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    conversation: Option<Conversation>,
+}
+
+
+#[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
+struct Conversation {
+    cache_duration: Option<i64>,
+    char_limit: Option<usize>,
 }
 
 impl User {
     pub fn new(id: i64, business_id: String, openai: Openai) -> Self {
-        Self { id, business_id, openai }
+        Self { id, business_id, openai}
     }
 
     pub fn get_config(&self) -> OpenaiConfig {
@@ -151,6 +162,59 @@ impl OpenaiConfig {
 
     async fn validate_api_key(api_key: &str) -> Result<bool, String> {
         dialogue::is_api_key_valid(api_key).await
+    }
+
+    pub fn set_cache_duration(&mut self, value: i64) -> Result<(), &'static str> {
+        if value >= 3_600 {
+            return Err("Maximum duration is 3,600 seconds")
+        }
+
+        let conversation = self.conversation.get_or_insert_with(
+            || Conversation { cache_duration: None, char_limit: None }
+        );
+        conversation.cache_duration = Some(value);
+        Ok(())
+    }
+
+    pub fn set_char_limit(&mut self, value: usize) -> Result<(), &'static str> {
+        if value >= 10_000 {
+            return Err("Maximum limit is 10,000 symbols")
+        }
+        let conversation = self.conversation.get_or_insert_with(
+            || Conversation { cache_duration: None, char_limit: None }
+        );
+        conversation.char_limit = Some(value);
+        Ok(())
+    }
+
+    pub fn get_cache_duration(&self) -> i64 {
+        if let Some(conversation) = &self.conversation {
+            if let Some(value) = conversation.cache_duration {
+                return value;
+            }
+        };
+        DEFAULT_CACHE_DURATION
+    }
+    pub fn get_char_limit(&self) -> usize {
+        if let Some(conversation) = &self.conversation {
+            if let Some(value) = conversation.char_limit {
+                return value;
+            }
+        };
+        DEFAULT_CHAR_LIMIT
+    }
+
+    pub async fn get_manager(&self) -> ConversationManager {
+        let mut manager = ConversationManager::default().await;
+        if let Some(conversation) = self.conversation.clone() {
+            if let Some(cache_duration) = conversation.cache_duration {
+                manager = manager.with_cache_duration(cache_duration)
+            }
+            if let Some(char_limit) = conversation.char_limit {
+                manager = manager.with_char_limit(char_limit)
+            }
+        }
+        manager
     }
 }
 
