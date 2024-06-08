@@ -75,6 +75,10 @@ impl OpenaiConfig {
         })
     }
 
+    pub fn get_real_api_key(&self) -> Option<String> {
+        self.api_key.clone()
+    }
+
     pub fn get_model(&self) -> &str {
         &self.model
     }

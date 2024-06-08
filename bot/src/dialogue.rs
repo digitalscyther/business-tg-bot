@@ -22,7 +22,7 @@ pub fn get_client(api_key: &str) -> Client<OpenAIConfig> {
 
 pub async fn get_response(config: &OpenaiConfig, message: String) -> Result<ChatResponse, OpenaiResponseError> {
     let client = get_client(
-        &config.get_api_key()
+        &config.get_real_api_key()
             .ok_or_else(|| OpenaiResponseError::Message("I don't know what to answer".to_string()))?
     );
 
