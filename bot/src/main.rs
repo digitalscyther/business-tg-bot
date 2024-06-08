@@ -223,7 +223,7 @@ async fn get_answer(pool: &Pool<Postgres>, user: &User, sender_id: &str, message
                 }
             }
         },
-    ).await.unwrap())
+    ).await.unwrap_or_else(|e| Some(e)))
 }
 
 #[tokio::main]
