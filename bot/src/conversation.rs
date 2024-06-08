@@ -113,8 +113,7 @@ impl ConversationManager {
         let timestamp = Some(Utc::now().timestamp_millis());
         let answer = match func(history).await {
             Ok(Some(answer)) => answer,
-            Ok(None) => return Ok(None),
-            Err(e) => return Err(format!("{e:?}")),
+            resp => return resp,
         };
 
         for (role, message, ts) in vec![
