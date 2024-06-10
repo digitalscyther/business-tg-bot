@@ -7,6 +7,7 @@ use crate::conversation::{ConversationManager, DEFAULT_CACHE_DURATION, DEFAULT_C
 
 
 const DEFAULT_MODEL: &str = "gpt-3.5-turbo";
+const DEFAULT_FOOTER: &str = "[ai generated answer]";
 
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -39,6 +40,8 @@ pub struct OpenaiConfig {
     max_tokens: u16,
     #[serde(skip_serializing_if = "Option::is_none")]
     conversation: Option<Conversation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chatting: Option<Chatting>,
 }
 
 
@@ -48,9 +51,18 @@ struct Conversation {
     char_limit: Option<usize>,
 }
 
+
+#[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
+#[derivative(Default)]
+struct Chatting {
+    answer_pause: (i32, i32),
+    #[derivative(Default(value = "Some(DEFAULT_FOOTER.to_string())"))]
+    footer: Option<String>,
+}
+
 impl User {
     pub fn new(id: i64, business_id: String, openai: Openai) -> Self {
-        Self { id, business_id, openai}
+        Self { id, business_id, openai }
     }
 
     pub fn get_config(&self) -> OpenaiConfig {
@@ -166,7 +178,7 @@ impl OpenaiConfig {
 
     pub fn set_cache_duration(&mut self, value: i64) -> Result<(), &'static str> {
         if value >= 3_600 {
-            return Err("Maximum duration is 3,600 seconds")
+            return Err("Maximum duration is 3,600 seconds");
         }
 
         let conversation = self.conversation.get_or_insert_with(
@@ -178,7 +190,7 @@ impl OpenaiConfig {
 
     pub fn set_char_limit(&mut self, value: usize) -> Result<(), &'static str> {
         if value >= 10_000 {
-            return Err("Maximum limit is 10,000 symbols")
+            return Err("Maximum limit is 10,000 symbols");
         }
         let conversation = self.conversation.get_or_insert_with(
             || Conversation { cache_duration: None, char_limit: None }
@@ -215,6 +227,64 @@ impl OpenaiConfig {
             }
         }
         manager
+    }
+
+    pub fn set_answer_pause(&mut self, input: &str) -> Result<(), &'static str> {
+        let parts: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
+        let value = match parts.len() {
+            1 => {
+                let value: i32 = parts[0].parse().map_err(|_| "Invalid answer_pause")?;
+                (value, value)
+            },
+            2 => {
+                let value1: i32 = parts[0].parse().map_err(|_| "Invalid answer_pause")?;
+                let value2: i32 = parts[1].parse().map_err(|_| "Invalid answer_pause")?;
+                (value1, value2)
+            },
+            _ => return Err("Invalid answer_pause")
+        };
+
+        const MIN_VALUE: i32 = 0;
+        const MAX_VALUE: i32 = 3600;
+
+        let (val1, val2) = value;
+
+        if val1 < MIN_VALUE || val1 > MAX_VALUE || val2 < MIN_VALUE || val2 > MAX_VALUE {
+            return Err("Values must be between 0 and 3600 (inclusive).");
+        }
+
+        let chatting = self.chatting.get_or_insert_with(
+            || Chatting::default()
+        );
+
+        chatting.answer_pause = value;
+
+        Ok(())
+    }
+
+    pub fn set_footer(&mut self, value: Option<String>) -> Result<(), &'static str> {
+        if value.clone().is_some_and(|v| v.len() > 40) {
+            return Err("Maximum footer length is 40 symbols");
+        }
+        let chatting = self.chatting.get_or_insert_with(
+            || Chatting::default()
+        );
+        chatting.footer = value;
+        Ok(())
+    }
+
+    pub fn get_answer_pause(&self) -> (i32, i32) {
+        if let Some(chatting) = &self.chatting {
+            return chatting.answer_pause;
+        };
+        (0, 0)
+    }
+
+    pub fn get_footer(&self) -> Option<String> {
+        if let Some(chatting) = &self.chatting {
+            return chatting.footer.clone();
+        };
+        Some(DEFAULT_FOOTER.to_string())
     }
 }
 

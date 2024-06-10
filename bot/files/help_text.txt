@@ -8,6 +8,8 @@
 /max_total_tokens_spent <new_tokens> - Set a new max total tokens.
 /history_timeout <new_timeout> - Set a new conversation cache timeout (seconds).
 /history_length <new_length> - Set a new conversation cache max length.
+/answer_pause <new_answer_pause> - Set a new answer pause duration (seconds).
+/answer_footer <new_answer_footer> - Set a new answer footer. Use [empty] to message without footer.
 
 Replace placeholders (e.g., <new_api_key>, <new_model>) with actual values.
 

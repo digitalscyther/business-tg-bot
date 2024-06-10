@@ -3,6 +3,7 @@ mod user;
 mod db;
 mod conversation;
 
+use rand::Rng;
 use std::env;
 use std::fs::read_to_string;
 use sqlx::{Pool, Postgres};
@@ -13,6 +14,7 @@ use tgbot::{
     types::{SendMessage, Update},
 };
 use tgbot::types::{Chat, ChatAction, SendChatAction, UpdateType};
+use tokio::time::{sleep, Duration};
 use crate::user::{Openai, User};
 
 const MAX_PROMPT_SIZE: usize = 4_000;
@@ -51,26 +53,32 @@ impl UpdateHandler for Handler {
                         Some(
                             SendMessage::new(
                                 message.chat.get_id(),
-                                match message.get_text() {
-                                    Some(text) => match get_answer(
-                                        &self.pool, &user, &sender_id.unwrap().to_string(), &text.clone().data,
-                                        || async {
-                                            let _ = self.client.execute(
-                                                SendChatAction::new(
-                                                    message.chat.get_id(),
-                                                    ChatAction::Typing,
-                                                ).with_business_connection_id(
-                                                    &business_id
-                                                )
-                                            ).await;
-                                        }
-                                    ).await {
-                                        Ok(Some(message)) => message,
-                                        Ok(None) => { return; }
-                                        Err(e) => e
-                                    },
-                                    None => "Only text".to_string()
-                                },
+                                {
+                                    let response = match message.get_text() {
+                                        Some(text) => match get_answer(
+                                            &self.pool, &user, &sender_id.unwrap().to_string(), &text.clone().data,
+                                            || async {
+                                                let _ = self.client.execute(
+                                                    SendChatAction::new(
+                                                        message.chat.get_id(),
+                                                        ChatAction::Typing,
+                                                    ).with_business_connection_id(
+                                                        &business_id
+                                                    )
+                                                ).await;
+                                            }
+                                        ).await {
+                                            Ok(Some(message)) => message,
+                                            Ok(None) => { return; }
+                                            Err(e) => e
+                                        },
+                                        None => "Only text".to_string()
+                                    };
+                                    match user.get_config().get_footer() {
+                                        Some(footer) => format!("{}\n\n{}", response, footer),
+                                        None => response,
+                                    }
+                                }
                             ).with_business_connection_id(business_id)
                         )
                     }
@@ -139,6 +147,28 @@ async fn setup(pool: &Pool<Postgres>, user: &mut User, command: String) -> Resul
         }
         ["/history_length"] => {
             format!("Current history length: {:?} symbols", config.get_char_limit())
+        }
+        ["/answer_pause", new_answer_pause] => {
+            config.set_answer_pause(new_answer_pause)?;
+            "Option updated".to_string()
+        }
+        ["/answer_pause"] => {
+            let answer_pause = config.get_answer_pause();
+            format!("Current answer pause: {}", match answer_pause.0 == answer_pause.1 {
+                true => format!("{} seconds", answer_pause.0),
+                false => format!("from {} to {} seconds", answer_pause.0, answer_pause.1),
+            })
+        }
+        ["/answer_footer"] => {
+            format!("Current footer: {:?}", config.get_footer().unwrap_or("---".to_string()))
+        }
+        ["/answer_footer", ..] => {
+            let new_answer_footer = command.replacen("/answer_footer ", "", 1);
+            config.set_footer(match new_answer_footer.trim().to_lowercase() == "[empty]" {
+                true => None,
+                false => Some(new_answer_footer.to_string())
+            })?;
+            "Option updated".to_string()
         }
         ["/model", new_model] => {
             config.set_model(new_model.to_string())?;
@@ -232,12 +262,16 @@ where
         sender_id,
         message,
         |messages| async {
-            call_typing().await;
             match dialogue::get_response(&config, messages).await {
                 Ok(response) => {
                     if let Err(e) = db::add_spends(pool, user.get_id(), response.tokens_spent as i32).await {
                         log::error!("Failed update tokens spent:{e:?}");
                     }
+                    let (from, to) = config.get_answer_pause();
+                    let random_seconds = rand::thread_rng().gen_range(from..=to) as u64;
+                    let duration = Duration::from_secs(random_seconds);
+                    call_typing().await;
+                    sleep(duration).await;
                     return Ok(Some(response.message));
                 }
                 Err(err) => {
