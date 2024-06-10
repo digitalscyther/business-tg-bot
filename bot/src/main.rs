@@ -262,16 +262,16 @@ where
         sender_id,
         message,
         |messages| async {
+            let (from, to) = config.get_answer_pause();
+            let random_seconds = rand::thread_rng().gen_range(from..=to) as u64;
+            let duration = Duration::from_secs(random_seconds);
+            sleep(duration).await;
+            call_typing().await;
             match dialogue::get_response(&config, messages).await {
                 Ok(response) => {
                     if let Err(e) = db::add_spends(pool, user.get_id(), response.tokens_spent as i32).await {
                         log::error!("Failed update tokens spent:{e:?}");
                     }
-                    let (from, to) = config.get_answer_pause();
-                    let random_seconds = rand::thread_rng().gen_range(from..=to) as u64;
-                    let duration = Duration::from_secs(random_seconds);
-                    call_typing().await;
-                    sleep(duration).await;
                     return Ok(Some(response.message));
                 }
                 Err(err) => {
